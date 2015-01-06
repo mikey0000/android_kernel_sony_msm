@@ -1340,7 +1340,7 @@ int create_pkt_cmd_session_set_property(
 			&pkt->rg_property_data[1];
 		hfi->enable = extra->enable;
 		if (extra->index == HAL_EXTRADATA_ASPECT_RATIO)
-			index = EXTRADATA_ASPECT_RATIO;
+			index = MSM_VIDC_EXTRADATA_ASPECT_RATIO;
 		else
 			index = get_hfi_extradata_index(extra->index);
 		if (index)
@@ -1487,6 +1487,16 @@ int create_pkt_cmd_session_set_property(
 			HFI_PROPERTY_CONFIG_VENC_HIER_P_ENH_LAYER;
 		pkt->rg_property_data[1] = *(u32 *)pdata;
 		pkt->size += sizeof(u32) * 2;
+		break;
+	}
+	case HAL_PARAM_VENC_VPX_ERROR_RESILIENCE_MODE:
+	{
+		struct hfi_enable *hfi;
+		pkt->rg_property_data[0] =
+			HFI_PROPERTY_PARAM_VENC_VPX_ERROR_RESILIENCE_MODE;
+		hfi = (struct hfi_enable *)&pkt->rg_property_data[1];
+		hfi->enable = ((struct hfi_enable *)pdata)->enable;
+		pkt->size += sizeof(u32) + sizeof(struct hfi_enable);
 		break;
 	}
 	case HAL_PARAM_VENC_ENABLE_INITIAL_QP:
