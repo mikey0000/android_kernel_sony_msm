@@ -355,7 +355,7 @@ static void msm_vfe46_process_error_status(struct vfe_device *vfe_dev)
 	if (error_status1 & (1 << 0)) {
 		pr_err("%s: camif error status: 0x%x\n",
 			__func__, vfe_dev->error_info.camif_status);
-		 msm_camera_io_dump_2(vfe_dev->vfe_base + 0x3A8, 0x30);
+		msm_camera_io_dump_2(vfe_dev->vfe_base + 0x3D0, 0x30);
 	}
 	if (error_status1 & (1 << 1))
 		pr_err("%s: stats bhist overwrite\n", __func__);
