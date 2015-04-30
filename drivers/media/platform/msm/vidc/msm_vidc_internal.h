@@ -250,6 +250,8 @@ struct msm_vidc_inst {
 	struct buf_count count;
 	enum msm_vidc_modes flags;
 	u32 multi_stream_mode;
+	u32 output_alloc_mode_supported;
+	u32 output_alloc_mode;
 	struct msm_vidc_core_capability capability;
 	enum buffer_mode_type buffer_mode_set[MAX_PORT_NUM];
 	struct list_head registered_bufs;

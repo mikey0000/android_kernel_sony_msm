@@ -736,6 +736,16 @@ int msm_vidc_release_buffers(void *instance, int buffer_type)
 
 	if (!inst)
 		return -EINVAL;
+	/*
+	* In dynamic buffer mode, driver needs to release resources,
+	* but not call release buffers on firmware, as the buffers
+	* were never registered with firmware.
+	*/
+	if ((buffer_type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) &&
+		(inst->output_alloc_mode ==
+				HAL_BUFFER_MODE_DYNAMIC)) {
+		goto free_and_unmap;
+	}
 
 	if (!inst->in_reconfig) {
 		rc = msm_comm_try_state(inst, MSM_VIDC_RELEASE_RESOURCES_DONE);
@@ -809,7 +819,7 @@ free_and_unmap:
 						__func__, bi, i, bi->handle[i],
 						bi->device_addr[i], bi->fd[i],
 						bi->buff_off[i], bi->mapped[i]);
-					msm_comm_smem_free(inst,
+					msm_smem_free(inst->mem_client,
 							bi->handle[i]);
 				}
 			}
