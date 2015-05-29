@@ -197,6 +197,10 @@ static struct wcd9xxx_mbhc_config mbhc_cfg = {
 	.key_code[5] = 0,
 	.key_code[6] = 0,
 	.key_code[7] = 0,
+#ifdef CONFIG_ARCH_SONY_KITAKAMI
+	.insert_detect_plug_type = DETECT_NO_PLUG_TYPE,
+	.insert_detect_comp_vth = MBHC_COMP_V_0P875_VDD,
+#endif
 };
 
 static struct afe_clk_cfg mi2s_tx_clk = {
