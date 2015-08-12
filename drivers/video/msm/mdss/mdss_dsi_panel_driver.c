@@ -3370,7 +3370,7 @@ static int mdss_panel_parse_dt(struct device_node *np,
 				__func__, __LINE__);
 			return -EINVAL;
 		}
-		pinfo->bpp = tmp;
+		pinfo->bpp = (!rc ? tmp : 24);
 		pinfo->mipi.mode = DSI_VIDEO_MODE;
 		data = of_get_property(next, "qcom,mdss-dsi-panel-type", NULL);
 		if (data && !strncmp(data, "dsi_cmd_mode", 12))
@@ -3427,31 +3427,31 @@ static int mdss_panel_parse_dt(struct device_node *np,
 		}
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-h-front-porch", &tmp);
-		pinfo->lcdc.h_front_porch = !rc ? tmp : 6;
+		pinfo->lcdc.h_front_porch = (!rc ? tmp : 6);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-h-back-porch", &tmp);
-		pinfo->lcdc.h_back_porch = !rc ? tmp : 6;
+		pinfo->lcdc.h_back_porch = (!rc ? tmp : 6);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-h-pulse-width", &tmp);
-		pinfo->lcdc.h_pulse_width = !rc ? tmp : 2;
+		pinfo->lcdc.h_pulse_width = (!rc ? tmp : 2);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-h-sync-skew", &tmp);
-		pinfo->lcdc.hsync_skew = !rc ? tmp : 0;
+		pinfo->lcdc.hsync_skew = (!rc ? tmp : 0);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-v-back-porch", &tmp);
-		pinfo->lcdc.v_back_porch = !rc ? tmp : 6;
+		pinfo->lcdc.v_back_porch = (!rc ? tmp : 6);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-v-front-porch", &tmp);
-		pinfo->lcdc.v_front_porch = !rc ? tmp : 6;
+		pinfo->lcdc.v_front_porch = (!rc ? tmp : 6);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-v-pulse-width", &tmp);
-		pinfo->lcdc.v_pulse_width = !rc ? tmp : 2;
+		pinfo->lcdc.v_pulse_width = (!rc ? tmp : 2);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-underflow-color", &tmp);
-		pinfo->lcdc.underflow_clr = !rc ? tmp : 0xff;
+		pinfo->lcdc.underflow_clr = (!rc ? tmp : 0xff);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-border-color", &tmp);
-		pinfo->lcdc.border_clr = !rc ? tmp : 0;
+		pinfo->lcdc.border_clr = (!rc ? tmp : 0);
 		data = of_get_property(np,
 			"qcom,mdss-dsi-panel-orientation", NULL);
 		if (data) {
@@ -3524,10 +3524,11 @@ static int mdss_panel_parse_dt(struct device_node *np,
 		pinfo->brightness_max = (!rc ? tmp : MDSS_MAX_BL_BRIGHTNESS);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-bl-min-level", &tmp);
-		pinfo->bl_min = !rc ? tmp : 0;
+		pinfo->bl_min = (!rc ? tmp : 0);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-bl-max-level", &tmp);
-		pinfo->bl_max = !rc ? tmp : 255;
+		pinfo->bl_max = (!rc ? tmp : 255);
+		ctrl_pdata->bklt_max = pinfo->bl_max;
 
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-interleave-mode", &tmp);
