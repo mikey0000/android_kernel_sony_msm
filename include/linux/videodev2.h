@@ -1072,6 +1072,7 @@ struct v4l2_bt_timings {
 #define V4L2_DV_VSYNC_POS_POL	0x00000001
 #define V4L2_DV_HSYNC_POS_POL	0x00000002
 
+
 /* DV timings */
 struct v4l2_dv_timings {
 	__u32 type;
@@ -2103,14 +2104,6 @@ enum v4l2_mpeg_vidc_video_perf_mode {
 
 #define V4L2_CID_MPEG_VIDC_VIDEO_HYBRID_HIERP_MODE \
 		(V4L2_CID_MPEG_MSM_VIDC_BASE + 72)
-
-#define V4L2_CID_MPEG_VIDC_VIDEO_PRIORITY \
-		(V4L2_CID_MPEG_MSM_VIDC_BASE + 73)
-
-enum v4l2_mpeg_vidc_video_priority {
-	V4L2_MPEG_VIDC_VIDEO_PRIORITY_REALTIME_ENABLE = 0,
-	V4L2_MPEG_VIDC_VIDEO_PRIORITY_REALTIME_DISABLE = 1,
-};
 
 /*  Camera class control IDs */
 #define V4L2_CID_CAMERA_CLASS_BASE 	(V4L2_CTRL_CLASS_CAMERA | 0x900)
