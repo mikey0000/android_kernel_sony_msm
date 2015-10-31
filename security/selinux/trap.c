@@ -17,8 +17,6 @@
 #include <linux/limits.h>
 #include <linux/fs.h>
 #include <asm/siginfo.h>
-#include <linux/highmem.h>
-#include <linux/pagemap.h>
 #include "avc_ss.h"
 #include "trap.h"
 
@@ -46,6 +44,11 @@ enum string_lsm_audit_data {
 	STRING_LSM_AUDIT_DATA_TCLASS,
 	STRING_LSM_AUDIT_DATA_OPRES,
 	STRING_LSM_AUDIT_DATA_MAX
+};
+
+struct _trapwork {
+	struct work_struct work;
+	struct task_struct *task;
 };
 
 int selinux_trap_enable;
@@ -194,33 +197,24 @@ static int cmp_tclass(char *rule, struct common_audit_data *ad)
 /* return 0 = identical / not 0 = different */
 static int get_pname(struct task_struct *task, char *zeroed_page)
 {
+	int res = 0;
 	unsigned int arg_len;
 	struct mm_struct *mm = get_task_mm(task);
-	struct vm_area_struct *vma;
-	int offset;
-	void *maddr;
-	struct page *page = NULL;
-
 	if (!mm)
-		return 0;
+		return res;
 	if (!mm->arg_end) {
 		mmput(mm);
-		return 0;
+		return res;
 	}
 	arg_len = mm->arg_end - mm->arg_start;
 
-	get_user_pages(task, mm, mm->arg_start, 1, 0, 1, &page, &vma);
-	offset = mm->arg_start & (PAGE_SIZE-1);
-	if (arg_len > PAGE_SIZE-offset)
-		arg_len = PAGE_SIZE-offset;
-	maddr = kmap(page);
-	copy_from_user_page(vma, page, mm->arg_start, zeroed_page,
-		maddr + offset, arg_len);
-	kunmap(page);
-	page_cache_release(page);
+	if (arg_len >= PAGE_SIZE)
+		arg_len = PAGE_SIZE-1;
+
+	res = access_process_vm(task, mm->arg_start, zeroed_page, arg_len, 0);
 
 	mmput(mm);
-	return 1;
+	return res;
 }
 
 /* return 0 = identical / not 0 = different */
@@ -240,7 +234,9 @@ static int cmp_pname(char *rule, struct common_audit_data *ad)
 		return 0;
 	}
 
+	rcu_read_lock();
 	rc = get_pname(current, pname);
+	rcu_read_unlock();
 
 	if (rc <= 0) {
 		pr_err("SELinux: trap: get_pname failed\n");
@@ -251,7 +247,7 @@ static int cmp_pname(char *rule, struct common_audit_data *ad)
 	trap_devel_log("SELinux: trap: compare rule '%s' with pname '%s'\n",
 		rule, pname);
 
-	rc = cmp_string(rule, pname, strlen(pname));
+	rc = cmp_string(rule, current->comm, strlen(current->comm));
 	if (rc)
 		trap_devel_log("SELinux: trap: different\n");
 	else
@@ -278,10 +274,12 @@ static int cmp_pname_parent(char *rule, struct common_audit_data *ad)
 		return 0;
 	}
 
+	rcu_read_lock();
 	rc = get_pname(current->parent, pname);
+	rcu_read_unlock();
 
 	if (rc <= 0) {
-		pr_err("SELinux: trap: get_pname(parent) failed\n");
+		pr_err("SELinux: trap: get_pname failed\n");
 		free_page((unsigned long) pname);
 		return 0;
 	}
@@ -289,7 +287,7 @@ static int cmp_pname_parent(char *rule, struct common_audit_data *ad)
 	trap_devel_log("SELinux: trap: compare rule '%s' with pname_parent '%s'\n",
 		rule, pname);
 
-	rc = cmp_string(rule, pname, strlen(pname));
+	rc = cmp_string(rule, current->comm, strlen(current->comm));
 	if (rc)
 		trap_devel_log("SELinux: trap: different\n");
 	else
@@ -316,14 +314,12 @@ static int cmp_pname_pgl(char *rule, struct common_audit_data *ad)
 		return 0;
 	}
 
-	if (current->group_leader->pid != current->pid) {
-		rc = get_pname(current->group_leader, pname);
-	} else {
-		rc = get_pname(current->parent->group_leader, pname);
-	}
+	rcu_read_lock();
+	rc = get_pname(current->group_leader, pname);
+	rcu_read_unlock();
 
 	if (rc <= 0) {
-		pr_err("SELinux: trap: get_pname(pgl) failed\n");
+		pr_err("SELinux: trap: get_pname failed\n");
 		free_page((unsigned long) pname);
 		return 0;
 	}
@@ -331,7 +327,7 @@ static int cmp_pname_pgl(char *rule, struct common_audit_data *ad)
 	trap_devel_log("SELinux: trap: compare rule '%s' with pname_pgl '%s'\n",
 		rule, pname);
 
-	rc = cmp_string(rule, pname, strlen(pname));
+	rc = cmp_string(rule, current->comm, strlen(current->comm));
 	if (rc)
 		trap_devel_log("SELinux: trap: different\n");
 	else
@@ -590,16 +586,18 @@ out:
 	return ret;
 }
 
-static void task_killer(struct task_struct *task)
+static void task_killer(struct work_struct *param)
 {
 	int ret;
 	struct siginfo info;
+	struct _trapwork *work = (struct _trapwork *)param;
 
 	memset(&info, 0, sizeof(struct siginfo));
 	info.si_signo = SIGABRT;
 	info.si_code = SI_KERNEL;
-	pr_info("SELinux: trap: send signal to pid:%d.\n", task->pid);
-	ret = send_sig_info(SIGABRT, &info, task);
+	pr_info("SELinux: trap: send signal to pid:%d.\n",
+		work->task->pid);
+	ret = send_sig_info(SIGABRT, &info, work->task);
 	if (ret < 0)
 		pr_err("SELinux: trap: send_sig_info failed\n");
 }
@@ -791,6 +789,9 @@ static void trapped_node_update(struct common_audit_data *ad)
 
 void trap_selinux_error(struct common_audit_data *ad)
 {
+	int ret;
+	struct _trapwork *work;
+
 	if (!selinux_trap_enable)
 		return;
 
@@ -812,12 +813,24 @@ void trap_selinux_error(struct common_audit_data *ad)
 	/* trapped Update & kmeg */
 	trapped_node_update(ad);
 
-	/* show current call stack of kernel layer */
-	pr_info("SELinux: trap: show stack.\n");
-	show_stack(NULL, NULL);
+	/* Violation( process Abort ) */
+	work = kmalloc(sizeof(struct _trapwork), GFP_KERNEL);
+	if (work) {
+		INIT_WORK((struct work_struct *)work, task_killer);
+		work->task = current;
+		ret = schedule_work((struct work_struct *)work);
+		if (!ret)
+			pr_err("SELinux: trap: schedule_work failed\n");
 
-	/* sending SIGABRT to myself */
-	task_killer(current);
+		pr_info("SELinux: trap: block process.\n");
+		flush_work((struct work_struct *)work);
+		pr_info("SELinux: trap: show stack.\n");
+		show_stack(work->task, NULL);
+		pr_info("SELinux: trap: process came back.\n");
+	} else {
+		pr_err("SELinux: trap: kmalloc() failed\n");
+	}
+	kfree((void *)work);
 }
 
 static int selinux_trap_init(void)

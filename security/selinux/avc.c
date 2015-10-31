@@ -33,6 +33,10 @@
 #include "avc.h"
 #include "avc_ss.h"
 #include "classmap.h"
+#ifdef CONFIG_SECURITY_SELINUX_TRAP
+#include "trap.h"
+const int secclass_map_size = ARRAY_SIZE(secclass_map);
+#endif
 
 #define AVC_CACHE_SLOTS			512
 #define AVC_DEF_CACHE_THRESHOLD		512
