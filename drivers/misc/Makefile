@@ -82,3 +82,4 @@ obj-y				+= felica_snfc/
 obj-$(CONFIG_ISDBT_TUNER_SMTEJ11X) += isdbt_tuner_drv.o
 obj-$(CONFIG_RPM975H16E4A_IRDA) += rpm975h16e4a.o
 obj-$(CONFIG_ONESEG_TUNER_SMTVJ18X) += oneseg_tuner_drv.o
+obj-$(CONFIG_UID_CPUTIME) 	+= uid_cputime.o
