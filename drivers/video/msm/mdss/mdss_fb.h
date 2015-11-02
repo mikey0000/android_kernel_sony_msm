@@ -21,6 +21,7 @@
 #include <linux/types.h>
 #include <linux/notifier.h>
 #include <linux/leds.h>
+#include <linux/workqueue.h>
 
 #include "mdss_panel.h"
 #include "mdss_mdp_splash_logo.h"
@@ -340,6 +341,7 @@ struct msm_fb_data_type {
 	enum dyn_mode_switch_state switch_state;
 	u32 switch_new_mode;
 	struct mutex switch_lock;
+
 #ifdef CONFIG_FB_MSM_MDSS_SPECIFIC_PANEL
 	bool suspend_avoided;
 

@@ -242,11 +242,11 @@ enum mdss_intf_events {
 	MDSS_EVENT_DSI_PANEL_STATUS,
 	MDSS_EVENT_DSI_DYNAMIC_SWITCH,
 	MDSS_EVENT_DSI_RECONFIG_CMD,
-	MDSS_EVENT_DSI_RESET_WRITE_PTR,
-	MDSS_EVENT_PANEL_TIMING_SWITCH,
 #ifdef CONFIG_FB_MSM_MDSS_SPECIFIC_PANEL
 	MDSS_EVENT_DISP_ON,
 #endif	/* CONFIG_FB_MSM_MDSS_SPECIFIC_PANEL */
+	MDSS_EVENT_DSI_RESET_WRITE_PTR,
+	MDSS_EVENT_PANEL_TIMING_SWITCH,
 };
 
 #ifdef CONFIG_FB_MSM_MDSS_SPECIFIC_PANEL
@@ -598,14 +598,15 @@ struct mdss_panel_data {
 	 * and teardown.
 	 */
 	int (*event_handler) (struct mdss_panel_data *pdata, int e, void *arg);
-
-	struct list_head timings_list;
-	struct mdss_panel_timing *current_timing;
-	bool active;
 #ifdef CONFIG_FB_MSM_MDSS_SPECIFIC_PANEL
 	int (*detect) (struct mdss_panel_data *pdata);
 	int (*update_panel) (struct mdss_panel_data *pdata);
+
 #endif
+	struct list_head timings_list;
+	struct mdss_panel_timing *current_timing;
+	bool active;
+
 	struct mdss_panel_data *next;
 };
 
@@ -799,12 +800,6 @@ int mdss_panel_get_boot_cfg(void);
 bool mdss_is_ready(void);
 int mdss_rect_cmp(struct mdss_rect *rect1, struct mdss_rect *rect2);
 
-/**
- * mdss_panel_override_te_params() - overrides TE params to enable SW TE
- * @pinfo: panel info
- */
-void mdss_panel_override_te_params(struct mdss_panel_info *pinfo);
-
 struct msm_fb_data_type;
 #if defined(CONFIG_DEBUG_FS) && defined(CONFIG_FB_MSM_MDSS_SPECIFIC_PANEL)
 void mipi_dsi_panel_create_debugfs(struct msm_fb_data_type *mfd);
@@ -815,6 +810,12 @@ static inline void mipi_dsi_panel_create_debugfs(struct msm_fb_data_type *mfd)
 	/* empty */
 }
 #endif
+
+/**
+ * mdss_panel_override_te_params() - overrides TE params to enable SW TE
+ * @pinfo: panel info
+ */
+void mdss_panel_override_te_params(struct mdss_panel_info *pinfo);
 
 #ifdef CONFIG_FB_MSM_MDSS
 int mdss_panel_debugfs_init(struct mdss_panel_info *panel_info);

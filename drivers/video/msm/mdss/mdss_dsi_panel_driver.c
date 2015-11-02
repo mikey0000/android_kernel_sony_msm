@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -39,8 +39,6 @@
 
 #define CHANGE_FPS_MIN 		36
 #define CHANGE_FPS_MAX 		63
-
-#define DMS_SUPPORTED 0
 
 struct device virtdev;
 
@@ -260,6 +258,7 @@ u32 mdss_dsi_panel_cmd_read(struct mdss_dsi_ctrl_pdata *ctrl, char cmd0,
 
 	return 0;
 }
+
 static void mdss_dsi_panel_cmds_send(struct mdss_dsi_ctrl_pdata *ctrl,
 			struct dsi_panel_cmds *pcmds)
 {
@@ -280,6 +279,8 @@ static void mdss_dsi_panel_cmds_send(struct mdss_dsi_ctrl_pdata *ctrl,
 	/*Panel ON/Off commands should be sent in DSI Low Power Mode*/
 	if (pcmds->link_state == DSI_LP_MODE)
 		cmdreq.flags  |= CMD_REQ_LP_MODE;
+	else if (pcmds->link_state == DSI_HS_MODE)
+		cmdreq.flags |= CMD_REQ_HS_MODE;
 
 	cmdreq.rlen = 0;
 	cmdreq.cb = NULL;
@@ -321,19 +322,19 @@ static void mdss_dsi_panel_bklt_dcs(struct mdss_dsi_ctrl_pdata *ctrl,
 
 static int mdss_dsi_request_gpios(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 {
-	int rc = 0;
+	int rc;
 
 	if (gpio_is_valid(ctrl_pdata->disp_en_gpio)) {
 		rc = gpio_request(ctrl_pdata->disp_en_gpio,
 						"disp_enable");
-		if (rc) {
+		if (rc && rc != -EBUSY) {
 			pr_err("request disp_en gpio failed, rc=%d\n",
 				       rc);
 			goto disp_en_gpio_err;
 		}
 	}
 	rc = gpio_request(ctrl_pdata->rst_gpio, "disp_rst_n");
-	if (rc) {
+	if (rc && rc != -EBUSY) {
 		pr_err("request reset gpio failed, rc=%d\n",
 			rc);
 		goto rst_gpio_err;
@@ -341,7 +342,7 @@ static int mdss_dsi_request_gpios(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 	if (gpio_is_valid(ctrl_pdata->bklt_en_gpio)) {
 		rc = gpio_request(ctrl_pdata->bklt_en_gpio,
 						"bklt_enable");
-		if (rc) {
+		if (rc && rc != -EBUSY) {
 			pr_err("request bklt gpio failed, rc=%d\n",
 				       rc);
 			goto bklt_en_gpio_err;
@@ -349,13 +350,13 @@ static int mdss_dsi_request_gpios(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 	}
 	if (gpio_is_valid(ctrl_pdata->mode_gpio)) {
 		rc = gpio_request(ctrl_pdata->mode_gpio, "panel_mode");
-		if (rc) {
+		if (rc && rc != -EBUSY) {
 			pr_err("request panel mode gpio failed,rc=%d\n",
 								rc);
 			goto mode_gpio_err;
 		}
 	}
-	return rc;
+	return 0;
 
 mode_gpio_err:
 	if (gpio_is_valid(ctrl_pdata->bklt_en_gpio))
@@ -559,7 +560,7 @@ static struct dsi_cmd_desc set_col_page_addr_cmd[] = {
 };
 
 static void mdss_dsi_send_col_page_addr(struct mdss_dsi_ctrl_pdata *ctrl,
-					struct mdss_rect *roi, int unicast)
+				struct mdss_rect *roi, int unicast)
 {
 	struct dcs_cmd_req cmdreq;
 
@@ -705,10 +706,8 @@ static void mdss_dsi_panel_switch_mode(struct mdss_panel_data *pdata,
 
 	mipi  = &pdata->panel_info.mipi;
 
-#if DMS_SUPPORTED
 	if (!mipi->dms_mode)
 		return;
-#endif
 
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
@@ -832,15 +831,15 @@ static ssize_t mdss_dsi_panel_vsyncs_per_ksecs_store(struct device *dev,
 
 	if (vps_en) {
 		vs_handle.enabled = false;
-		if (!vpsd.vps_en && (ctl->add_vsync_handler)) {
-			ctl->add_vsync_handler(ctl, &vs_handle);
+		if (!vpsd.vps_en && (ctl->ops.add_vsync_handler)) {
+			ctl->ops.add_vsync_handler(ctl, &vs_handle);
 			vpsd.vps_en = true;
 			pr_info("%s: vsyncs_per_ksecs is valid\n", __func__);
 		}
 	} else {
 		vs_handle.enabled = true;
-		if (vpsd.vps_en && (ctl->remove_vsync_handler)) {
-			ctl->remove_vsync_handler(ctl, &vs_handle);
+		if (vpsd.vps_en && (ctl->ops.remove_vsync_handler)) {
+			ctl->ops.remove_vsync_handler(ctl, &vs_handle);
 			vpsd.vps_en = false;
 			fpsd.fpks = 0;
 			pr_info("%s: vsyncs_per_ksecs is invalid\n", __func__);
@@ -1400,14 +1399,14 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 
 	if (pdata->panel_info.dsi_master != pdata->panel_info.pdest)
 		goto end;
-#if DMS_SUPPORTED
+
 	if ((pinfo->mipi.dms_mode == DYNAMIC_MODE_SWITCH_IMMEDIATE) &&
 			(pinfo->mipi.boot_mode != pinfo->mipi.mode)) {
 		mdss_dsi_panel_cmds_send(ctrl_pdata,
 					&ctrl_pdata->post_dms_on_cmds);
 		goto set_fps;
 	}
-#endif
+
 	if (spec_pdata->einit_cmds.cmd_cnt) {
 		pr_debug("%s: early init sequence\n", __func__);
 		mdss_dsi_panel_cmds_send(ctrl_pdata, &spec_pdata->einit_cmds);
@@ -1436,9 +1435,7 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 		pr_info("%s: ctrl=%p ndx=%d\n", __func__,
 					ctrl_pdata, ctrl_pdata->ndx);
 	}
-#if DMS_SUPPORTED
 set_fps:
-#endif
 	if (ctrl_pdata->panel_data.panel_info.mipi.mode == DSI_CMD_MODE) {
 		if (ctrl_pdata->fps_cmds.cmd_cnt) {
 			fps_cmds = pinfo->lcdc.chg_fps.rtn_pos.pos[0];
@@ -1532,8 +1529,8 @@ post_cmds:
 	vs_handle.cmd_post_flush = false;
 	vs_handle.enabled = true;
 
-	if (vpsd.vps_en && (ctl->remove_vsync_handler)) {
-		ctl->remove_vsync_handler(ctl, &vs_handle);
+	if (vpsd.vps_en && (ctl->ops.remove_vsync_handler)) {
+		ctl->ops.remove_vsync_handler(ctl, &vs_handle);
 		vpsd.vps_en = false;
 		fpsd.fpks = 0;
 		pr_info("%s: vsyncs_per_ksecs is invalid\n", __func__);
@@ -1928,7 +1925,7 @@ static int mdss_dsi_panel_detect(struct mdss_panel_data *pdata)
 	pr_debug("%s: Panel ID", __func__);
 	mdss_dsi_op_mode_config(DSI_CMD_MODE, pdata);
 	mdss_dsi_cmds_rx(ctrl_pdata,
-			 spec_pdata->id_read_cmds.cmds, 10);
+			 spec_pdata->id_read_cmds.cmds, 10, 0);
 
 	pr_debug("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",
 		ctrl_pdata->rx_buf.data[0], ctrl_pdata->rx_buf.data[1],
@@ -2166,9 +2163,9 @@ static void get_uv_data(struct mdss_dsi_ctrl_pdata *ctrl_pdata,
 	mdss_dsi_clk_ctrl(ctrl_pdata, DSI_ALL_CLKS, 1);
 	for (i = 0; i < ctrl_pdata->spec_pdata->uv_read_cmds.cmd_cnt; i++) {
 		if (short_response)
-			mdss_dsi_cmds_rx(ctrl_pdata, cmds, 0);
+			mdss_dsi_cmds_rx(ctrl_pdata, cmds, 0, 0);
 		else
-			mdss_dsi_cmds_rx(ctrl_pdata, cmds, len);
+			mdss_dsi_cmds_rx(ctrl_pdata, cmds, len, 0);
 		memcpy(pos, ctrl_pdata->rx_buf.data, len);
 		pos += len;
 		cmds++;
@@ -2829,7 +2826,6 @@ static void mdss_dsi_parse_roi_alignment(struct device_node *np,
 	}
 }
 
-#if DMS_SUPPORTED
 static void mdss_dsi_parse_dms_config(struct device_node *np,
 	struct mdss_dsi_ctrl_pdata *ctrl)
 {
@@ -2879,7 +2875,6 @@ exit:
 		pinfo->mipi.dms_mode);
 	return;
 }
-#endif
 
 static void mdss_dsi_parse_esd_params(struct device_node *np,
 	struct mdss_dsi_ctrl_pdata *ctrl)
@@ -2982,9 +2977,10 @@ static int mdss_dsi_parse_panel_features(struct device_node *np,
 //	pinfo->cont_splash_enabled = of_property_read_bool(np,
 //		"qcom,cont-splash-enabled");
 
+	pinfo->partial_update_supported = of_property_read_bool(np,
+		"qcom,partial-update-enabled");
 	if (pinfo->mipi.mode == DSI_CMD_MODE) {
-		pinfo->partial_update_enabled = of_property_read_bool(np,
-				"qcom,partial-update-enabled");
+		pinfo->partial_update_enabled = pinfo->partial_update_supported;
 		pr_info("%s: partial_update_enabled=%d\n", __func__,
 					pinfo->partial_update_enabled);
 		if (pinfo->partial_update_enabled) {
@@ -3007,9 +3003,9 @@ static int mdss_dsi_parse_panel_features(struct device_node *np,
 		"qcom,suspend-ulps-enabled");
 	pr_info("%s: ulps during suspend feature %s", __func__,
 		(pinfo->ulps_suspend_enabled ? "enabled" : "disabled"));
-#if DMS_SUPPORTED
+
 	mdss_dsi_parse_dms_config(np, ctrl);
-#endif
+
 	pinfo->panel_ack_disabled = of_property_read_bool(np,
 				"qcom,panel-ack-disabled");
 
@@ -3389,7 +3385,7 @@ static int mdss_panel_parse_dt(struct device_node *np,
 				__func__, __LINE__);
 			return -EINVAL;
 		}
-		pinfo->bpp = tmp;
+		pinfo->bpp = (!rc ? tmp : 24);
 		pinfo->mipi.mode = DSI_VIDEO_MODE;
 		data = of_get_property(next, "qcom,mdss-dsi-panel-type", NULL);
 		if (data && !strncmp(data, "dsi_cmd_mode", 12))
@@ -3446,31 +3442,31 @@ static int mdss_panel_parse_dt(struct device_node *np,
 		}
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-h-front-porch", &tmp);
-		pinfo->lcdc.h_front_porch = !rc ? tmp : 6;
+		pinfo->lcdc.h_front_porch = (!rc ? tmp : 6);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-h-back-porch", &tmp);
-		pinfo->lcdc.h_back_porch = !rc ? tmp : 6;
+		pinfo->lcdc.h_back_porch = (!rc ? tmp : 6);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-h-pulse-width", &tmp);
-		pinfo->lcdc.h_pulse_width = !rc ? tmp : 2;
+		pinfo->lcdc.h_pulse_width = (!rc ? tmp : 2);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-h-sync-skew", &tmp);
-		pinfo->lcdc.hsync_skew = !rc ? tmp : 0;
+		pinfo->lcdc.hsync_skew = (!rc ? tmp : 0);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-v-back-porch", &tmp);
-		pinfo->lcdc.v_back_porch = !rc ? tmp : 6;
+		pinfo->lcdc.v_back_porch = (!rc ? tmp : 6);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-v-front-porch", &tmp);
-		pinfo->lcdc.v_front_porch = !rc ? tmp : 6;
+		pinfo->lcdc.v_front_porch = (!rc ? tmp : 6);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-v-pulse-width", &tmp);
-		pinfo->lcdc.v_pulse_width = !rc ? tmp : 2;
+		pinfo->lcdc.v_pulse_width = (!rc ? tmp : 2);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-underflow-color", &tmp);
-		pinfo->lcdc.underflow_clr = !rc ? tmp : 0xff;
+		pinfo->lcdc.underflow_clr = (!rc ? tmp : 0xff);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-border-color", &tmp);
-		pinfo->lcdc.border_clr = !rc ? tmp : 0;
+		pinfo->lcdc.border_clr = (!rc ? tmp : 0);
 		data = of_get_property(np,
 			"qcom,mdss-dsi-panel-orientation", NULL);
 		if (data) {
@@ -3543,10 +3539,11 @@ static int mdss_panel_parse_dt(struct device_node *np,
 		pinfo->brightness_max = (!rc ? tmp : MDSS_MAX_BL_BRIGHTNESS);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-bl-min-level", &tmp);
-		pinfo->bl_min = !rc ? tmp : 0;
+		pinfo->bl_min = (!rc ? tmp : 0);
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-bl-max-level", &tmp);
-		pinfo->bl_max = !rc ? tmp : 255;
+		pinfo->bl_max = (!rc ? tmp : 255);
+		ctrl_pdata->bklt_max = pinfo->bl_max;
 
 		rc = of_property_read_u32(next,
 			"qcom,mdss-dsi-interleave-mode", &tmp);
@@ -3732,6 +3729,9 @@ static int mdss_panel_parse_dt(struct device_node *np,
 
 		mdss_dsi_parse_dcs_cmds(next, &spec_pdata->id_read_cmds,
 			"somc,mdss-dsi-id-read-command", NULL);
+
+		pinfo->mipi.force_clk_lane_hs = of_property_read_bool(np,
+			"qcom,mdss-dsi-force-clock-lane-hs");
 
 		rc = of_property_read_u32_array(next,
 			"somc,mdss-phy-size-mm", res, 2);
@@ -4193,6 +4193,7 @@ exit_lcd_id:
 
 	pinfo->dynamic_switch_pending = false;
 	pinfo->is_lpm_mode = false;
+	pinfo->esd_rdy = false;
 
 	ctrl_pdata->on = mdss_dsi_panel_on;
 	ctrl_pdata->off = mdss_dsi_panel_off;

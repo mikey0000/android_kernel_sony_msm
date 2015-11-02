@@ -1037,11 +1037,11 @@ static int mdss_dsi_blank(struct mdss_panel_data *pdata, int power_state)
 		if (pdata->panel_info.type == MIPI_CMD_PANEL) {
 			ctrl_pdata->switch_mode(pdata, SWITCH_TO_VIDEO_MODE);
 		} else if (pdata->panel_info.type == MIPI_VIDEO_PANEL) {
-			ctrl_pdata->switch_mode(pdata, SWITCH_TO_CMD_MODE);
 #ifdef CONFIG_FB_MSM_MDSS_SPECIFIC_PANEL
 			if (pdata->panel_info.dsi_master == pdata->panel_info.pdest)
 				mdss_dsi_set_tear_off(ctrl_pdata);
 #else
+			ctrl_pdata->switch_mode(pdata, SWITCH_TO_CMD_MODE);
 			mdss_dsi_set_tear_off(ctrl_pdata);
 #endif
 		}
@@ -1650,15 +1650,15 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 		if (ctrl_pdata->check_status)
 			rc = ctrl_pdata->check_status(ctrl_pdata);
 		break;
-	case MDSS_EVENT_PANEL_TIMING_SWITCH:
-		rc = mdss_dsi_panel_timing_switch(ctrl_pdata, arg);
-		break;
 #ifdef CONFIG_FB_MSM_MDSS_SPECIFIC_PANEL
 	case MDSS_EVENT_DISP_ON:
 		if (ctrl_pdata->spec_pdata->disp_on)
 			ctrl_pdata->spec_pdata->disp_on(pdata);
 		break;
 #endif	/* CONFIG_FB_MSM_MDSS_SPECIFIC_PANEL */
+	case MDSS_EVENT_PANEL_TIMING_SWITCH:
+		rc = mdss_dsi_panel_timing_switch(ctrl_pdata, arg);
+		break;
 	default:
 		pr_debug("%s: unhandled event=%d\n", __func__, event);
 		break;

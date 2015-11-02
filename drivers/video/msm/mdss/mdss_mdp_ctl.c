@@ -2767,6 +2767,7 @@ int mdss_mdp_ctl_stop(struct mdss_mdp_ctl *ctl, int power_state)
 end:
 	if (!ret) {
 		ctl->power_state = power_state;
+		mdss_mdp_ctl_perf_update(ctl, 0);
 		if (!ctl->pending_mode_switch)
 			mdss_mdp_ctl_perf_update(ctl, 0);
 	}

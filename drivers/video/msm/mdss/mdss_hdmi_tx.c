@@ -1801,6 +1801,11 @@ static void hdmi_tx_set_vendor_specific_infoframe(
 	vs_iframe[5] = 0x0C;
 	vs_iframe[6] = 0x00;
 
+	if (!hdmi_ctrl->hpd_feature_on) {
+		DEV_ERR("%s: HDMI clock is not enabled\n", __func__);
+		return;
+	}
+
 	if ((hdmi_ctrl->s3d_mode != HDMI_S3D_NONE) &&
 		hdmi_edid_is_s3d_mode_supported(
 			hdmi_ctrl->feature_data[HDMI_TX_FEAT_EDID],

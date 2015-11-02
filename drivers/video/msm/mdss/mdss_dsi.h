@@ -1,4 +1,5 @@
 /* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2013-2014 Sony Mobile Communications AB.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -254,15 +255,6 @@ struct dsi_panel_cmds {
 	int link_state;
 };
 
-struct dsi_panel_timing {
-	struct mdss_panel_timing timing;
-	uint32_t phy_timing[12];
-	/* DSI_CLKOUT_TIMING_CTRL */
-	char t_clk_post;
-	char t_clk_pre;
-	struct dsi_panel_cmds on_cmds;
-	struct dsi_panel_cmds switch_cmds;
-};
 #ifdef CONFIG_FB_MSM_MDSS_SPECIFIC_PANEL
 #define DEFAULT_CMDS	0
 #define DETECTED_CMDS	1
@@ -370,6 +362,16 @@ struct mdss_panel_specific_pdata {
 	int (*vreg_ctrl) (struct mdss_dsi_ctrl_pdata *ctrl, int enable);
 };
 #endif
+
+struct dsi_panel_timing {
+	struct mdss_panel_timing timing;
+	uint32_t phy_timing[12];
+	/* DSI_CLKOUT_TIMING_CTRL */
+	char t_clk_post;
+	char t_clk_pre;
+	struct dsi_panel_cmds on_cmds;
+	struct dsi_panel_cmds switch_cmds;
+};
 
 struct dsi_kickoff_action {
 	struct list_head act_entry;
