@@ -2222,6 +2222,9 @@ int mdss_dsi_cmdlist_commit(struct mdss_dsi_ctrl_pdata *ctrl, int from_mdp)
 			mdss_dsi_cmd_start_hs_clk_lane(ctrl);
 	}
 
+	if (!req)
+		goto need_lock;
+
 	MDSS_XLOG(ctrl->ndx, req->flags, req->cmds_cnt, from_mdp, current->pid);
 
 	pr_debug("%s:  from_mdp=%d pid=%d\n", __func__, from_mdp, current->pid);
