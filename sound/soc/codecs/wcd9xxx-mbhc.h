@@ -289,9 +289,9 @@ struct wcd9xxx_mbhc_config {
 	bool use_vddio_meas;
 	bool enable_anc_mic_detect;
 	enum hw_jack_type hw_jack_type;
-	int key_code[8];
 	enum wcd9xxx_insert_detect_plug_type insert_detect_plug_type;
 	enum wcd9xxx_insert_detect_comp_vth_type insert_detect_comp_vth;
+	int key_code[8];
 };
 
 struct wcd9xxx_cfilt_mode {
