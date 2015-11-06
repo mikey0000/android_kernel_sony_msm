@@ -105,6 +105,49 @@ static struct msm_gpiomux_config msm_eth_configs[] = {
 };
 #endif
 
+static struct gpiomux_setting uim1_det_actv_cfg = {
+	.func = GPIOMUX_FUNC_1,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_UP,
+	.dir = GPIOMUX_IN,
+};
+static struct gpiomux_setting uim1_det_susp_cfg = {
+	.func = GPIOMUX_FUNC_1,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_NONE,
+	.dir = GPIOMUX_IN,
+};
+
+static struct gpiomux_setting uim2_det_actv_cfg = {
+	.func = GPIOMUX_FUNC_1,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_UP,
+	.dir = GPIOMUX_IN,
+};
+static struct gpiomux_setting uim2_det_susp_cfg = {
+	.func = GPIOMUX_FUNC_1,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_NONE,
+	.dir = GPIOMUX_IN,
+};
+
+static struct msm_gpiomux_config msm8226_uim_det_configs[] __initdata = {
+	{
+		.gpio      = 60,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &uim1_det_actv_cfg,
+			[GPIOMUX_SUSPENDED] = &uim1_det_susp_cfg,
+		},
+	},
+	{
+		.gpio      = 56,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &uim2_det_actv_cfg,
+			[GPIOMUX_SUSPENDED] = &uim2_det_susp_cfg,
+		},
+	},
+};
+
 static struct gpiomux_setting synaptics_int_act_cfg = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_8MA,
@@ -889,6 +932,10 @@ void __init msm8226_init_gpiomux(void)
 	if (of_board_is_skuf())
 		msm_gpiomux_install(msm_skuf_nfc_configs,
 				ARRAY_SIZE(msm_skuf_nfc_configs));
+
+	if (machine_is_msm8226())
+		msm_gpiomux_install(msm8226_uim_det_configs,
+			ARRAY_SIZE(msm8226_uim_det_configs));
 
 	msm_gpiomux_install_nowrite(msm_lcd_configs,
 			ARRAY_SIZE(msm_lcd_configs));
