@@ -1264,14 +1264,12 @@ static int get_monotonic_soc_raw(struct fg_chip *chip)
 
 #ifdef CONFIG_QPNP_FG_EXTENSION
 	if (cap[0] > 0)
-		capacity = somc_fg_ceil_capacity(cap[0]);
-#else
-	if (cap[0] > 0)
-		capacity = (cap[0] * 100 / FULL_PERCENT);
-#endif
+		cap[0] = somc_fg_ceil_capacity(cap[0]);
 
+#else
 	if (fg_debug_mask & FG_POWER_SUPPLY)
 		pr_info_ratelimited("raw: 0x%02x\n", cap[0]);
+#endif
 	return cap[0];
 }
 
