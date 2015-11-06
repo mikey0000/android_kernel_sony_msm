@@ -96,7 +96,7 @@ struct f_rndis {
 static struct f_rndis *__rndis;
 
 int
-rndis_rx_trigger(bool write)
+rndis_rx_trigger(void)
 {
 	struct f_rndis *rndis = __rndis;
 
@@ -104,8 +104,6 @@ rndis_rx_trigger(bool write)
 		pr_err("can't set rx trigger\n");
 		return -EINVAL;
 	}
-	if (!write)
-		return rndis->port.rx_triggered;
 
 	if (rndis->port.rx_triggered)
 		return 0;
@@ -511,6 +509,7 @@ static void rndis_response_complete(struct usb_ep *ep, struct usb_request *req)
 	}
 }
 
+#define MAX_PKTS_PER_XFER	10
 static void rndis_command_complete(struct usb_ep *ep, struct usb_request *req)
 {
 	struct f_rndis			*rndis = req->context;
@@ -542,7 +541,7 @@ static void rndis_command_complete(struct usb_ep *ep, struct usb_request *req)
 			 * together too quickly. However, module param
 			 * is not honored.
 			 */
-			rndis->port.dl_max_pkts_per_xfer = 3;
+			rndis->port.dl_max_pkts_per_xfer = 5;
 
 			gether_update_dl_max_pkts_per_xfer(&rndis->port,
 					 rndis->port.dl_max_pkts_per_xfer);
@@ -554,7 +553,7 @@ static void rndis_command_complete(struct usb_ep *ep, struct usb_request *req)
 			rndis->port.multi_pkt_xfer = 1;
 		else
 			rndis->port.multi_pkt_xfer = 0;
-		pr_info("%s: MaxTransferSize: %d : Multi_pkt_txr: %s\n",
+		DBG(cdev, "%s: MaxTransferSize: %d : Multi_pkt_txr: %s\n",
 				__func__, buf->MaxTransferSize,
 				rndis->port.multi_pkt_xfer ? "enabled" :
 							    "disabled");
