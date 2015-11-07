@@ -23,7 +23,11 @@
 #define PC_CC_COLS             13
 
 #define PC_TEMP_ROWS		31
+#ifndef CONFIG_MACH_SONY_EAGLE
 #define PC_TEMP_COLS		8
+#else
+#define PC_TEMP_COLS		9
+#endif
 
 #define ACC_IBAT_ROWS		4
 #define ACC_TEMP_COLS		3
