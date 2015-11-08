@@ -1385,6 +1385,10 @@
 	status = "ok";
 };
 
+&vph_pwr_vreg {
+	status = "ok";
+};
+
 &slim_msm {
 	taiko_codec {
 		qcom,cdc-micbias-ldoh-v = <0x3>;
@@ -1395,6 +1399,15 @@
 		qcom,cdc-micbias2-cfilt-sel = <0x1>;
 		qcom,cdc-micbias3-cfilt-sel = <0x1>;
 		qcom,cdc-micbias4-cfilt-sel = <0x1>;
+
+		/* Rhine has external spkrdrv supply. Give a dummy supply to
+		 * make codec driver's happy.
+		*/
+		cdc-vdd-spkdrv-supply = <&vph_pwr_vreg>;
+		qcom,cdc-vdd-spkdrv-voltage = <0 0>;
+		qcom,cdc-vdd-spkdrv-current = <0>;
+
+		qcom,cdc-on-demand-supplies = "cdc-vdd-spkdrv";
 	};
 };
 
