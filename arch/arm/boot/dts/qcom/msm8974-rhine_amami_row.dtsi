@@ -37,7 +37,30 @@
 			preset_n_bytes_per_object = <5>;
 			delay_after_hw_reset = <200>;
 			wakeup_gesture_supported = <1>;
-			wakeup_gesture_timeout = <0>;
+			wakeup_gesture_lpm_disabled = <1>;
+			wakeup_gesture_timeout = <2000>;
+			wakeup_gesture {
+				double_tap {
+					gesture_code = <0x0003>;
+					event_00 {
+						type = <2>; /* LOG */
+						message = "=== DOUBLE TAP ===";
+					};
+					event_01 {
+						type = <1>; /* KEY */
+						code = <116>; /* KEY_POWER */
+						down = <1>;
+					};
+					event_02 {
+						type = <1>; /* KEY */
+						code = <116>; /* KEY_POWER */
+						down = <0>;
+					};
+					event_03 {
+						type = <99>; /* END */
+					};
+				};
+			};
 		};
 	};
 
