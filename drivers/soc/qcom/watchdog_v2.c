@@ -29,6 +29,7 @@
 #include <soc/qcom/scm.h>
 #include <soc/qcom/memory_dump.h>
 #include <soc/qcom/watchdog.h>
+#include <linux/kmemleak.h>
 
 #define MODULE_NAME "msm_watchdog"
 #define WDT0_ACCSCSSNBARK_INT 0
@@ -389,7 +390,7 @@ void msm_trigger_wdog_bite(void)
 	__raw_writel(1, wdog_data->base + WDT0_RST);
 	mb();
 	/* Delay to make sure bite occurs */
-	mdelay(1);
+	mdelay(10000);
 	pr_err("Wdog - STS: 0x%x, CTL: 0x%x, BARK TIME: 0x%x, BITE TIME: 0x%x",
 		__raw_readl(wdog_data->base + WDT0_STS),
 		__raw_readl(wdog_data->base + WDT0_EN),
@@ -482,13 +483,14 @@ static void configure_bark_dump(struct msm_watchdog_data *wdog_dd)
 			pr_err("cpu dump data structure allocation failed\n");
 			goto out0;
 		}
+		kmemleak_not_leak(cpu_data);
 		cpu_buf = kzalloc(MAX_CPU_CTX_SIZE * num_present_cpus(),
 				  GFP_KERNEL);
 		if (!cpu_buf) {
 			pr_err("cpu reg context space allocation failed\n");
 			goto out1;
 		}
-
+		kmemleak_not_leak(cpu_buf);
 		for_each_cpu(cpu, cpu_present_mask) {
 			cpu_data[cpu].addr = virt_to_phys(cpu_buf +
 							cpu * MAX_CPU_CTX_SIZE);

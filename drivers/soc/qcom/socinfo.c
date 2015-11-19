@@ -1,4 +1,5 @@
-/* Copyright (c) 2009-2014, The Linux Foundation. All rights reserved.
+/*
+ * Copyright (c) 2009-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -207,8 +208,6 @@ static union {
 	struct socinfo_v9 v9;
 	struct socinfo_v10 v10;
 } *socinfo;
-
-static int msm8994v1;
 
 static struct msm_soc_info cpu_of_id[] = {
 
@@ -475,16 +474,20 @@ static struct msm_soc_info cpu_of_id[] = {
 
 	/* 8909 IDs */
 	[245] = {MSM_CPU_8909, "MSM8909"},
+	[258] = {MSM_CPU_8909, "MSM8209"},
+	[259] = {MSM_CPU_8909, "MSM8208"},
+	[265] = {MSM_CPU_8909, "APQ8009"},
+	[275] = {MSM_CPU_8909, "MSM8609"},
 	[260] = {MSM_CPU_8909, "MDMFERRUM"},
 	[261] = {MSM_CPU_8909, "MDMFERRUM"},
 	[262] = {MSM_CPU_8909, "MDMFERRUM"},
 
-	/* ZIRC IDs */
-	[234] = {MSM_CPU_ZIRC, "MSMZIRC"},
-	[235] = {MSM_CPU_ZIRC, "MSMZIRC"},
-	[236] = {MSM_CPU_ZIRC, "MSMZIRC"},
-	[237] = {MSM_CPU_ZIRC, "MSMZIRC"},
-	[238] = {MSM_CPU_ZIRC, "MSMZIRC"},
+	/* 9640 IDs */
+	[234] = {MSM_CPU_9640, "MDM9640"},
+	[235] = {MSM_CPU_9640, "MDM9640"},
+	[236] = {MSM_CPU_9640, "MDM9640"},
+	[237] = {MSM_CPU_9640, "MDM9640"},
+	[238] = {MSM_CPU_9640, "MDM9640"},
 
 	/* 8994 ID */
 	[207] = {MSM_CPU_8994, "MSM8994"},
@@ -501,6 +504,15 @@ static struct msm_soc_info cpu_of_id[] = {
 
 	/* Tellurium ID */
 	[264] = {MSM_CPU_TELLURIUM, "MSMTELLURIUM"},
+
+	/* Terbium ID */
+	[266] = {MSM_CPU_TERBIUM, "MSMTERBIUM"},
+
+	/* 8929 IDs */
+	[268] = {MSM_CPU_8929, "MSM8929"},
+	[269] = {MSM_CPU_8929, "MSM8629"},
+	[270] = {MSM_CPU_8929, "MSM8229"},
+	[271] = {MSM_CPU_8929, "APQ8029"},
 
 	/* Uninitialized IDs are not known to run Linux.
 	   MSM_CPU_UNKNOWN is set to 0 to ensure these IDs are
@@ -1000,9 +1012,13 @@ static void * __init setup_dummy_socinfo(void)
 		dummy_socinfo.id = 233;
 		strlcpy(dummy_socinfo.build_id, "msm8936 - ",
 			sizeof(dummy_socinfo.build_id));
-	} else if (early_machine_is_msmzirc()) {
+	} else if (early_machine_is_mdm9640()) {
 		dummy_socinfo.id = 238;
-		strlcpy(dummy_socinfo.build_id, "msmzirc - ",
+		strlcpy(dummy_socinfo.build_id, "mdm9640 - ",
+			sizeof(dummy_socinfo.build_id));
+	} else if (early_machine_is_msmvpipa()) {
+		dummy_socinfo.id = 238;
+		strlcpy(dummy_socinfo.build_id, "msmvpipa - ",
 			sizeof(dummy_socinfo.build_id));
 	} else if (early_machine_is_msm8994()) {
 		dummy_socinfo.id = 207;
@@ -1012,9 +1028,17 @@ static void * __init setup_dummy_socinfo(void)
 		dummy_socinfo.id = 251;
 		strlcpy(dummy_socinfo.build_id, "msm8992 - ",
 			sizeof(dummy_socinfo.build_id));
+	} else if (early_machine_is_msmterbium()) {
+		dummy_socinfo.id = 266;
+		strlcpy(dummy_socinfo.build_id, "msmterbium - ",
+			sizeof(dummy_socinfo.build_id));
 	} else if (early_machine_is_msmtellurium()) {
 		dummy_socinfo.id = 264;
 		strlcpy(dummy_socinfo.build_id, "msmtellurium - ",
+			sizeof(dummy_socinfo.build_id));
+	} else if (early_machine_is_msm8929()) {
+		dummy_socinfo.id = 268;
+		strlcpy(dummy_socinfo.build_id, "msm8929 - ",
 			sizeof(dummy_socinfo.build_id));
 	}
 
@@ -1094,9 +1118,6 @@ static int __init socinfo_init_sysfs(void)
 	struct device *msm_soc_device;
 	struct soc_device *soc_dev;
 	struct soc_device_attribute *soc_dev_attr;
-
-	if (msm8994v1 == 1)
-		panic("MSM8994 V1 no longer supported");
 
 	if (!socinfo) {
 		pr_err("%s: No socinfo found!\n", __func__);
@@ -1236,15 +1257,6 @@ static void socinfo_print(void)
 	}
 }
 
-static inline void check_msm8994_version(void)
-{
-	if (SOCINFO_VERSION_MAJOR(socinfo->v1.version) == 1) {
-		pr_err("MSM8994 V1 no longer supported\n");
-		msm8994v1 = 1;
-		WARN_ON(1);
-	}
-}
-
 int __init socinfo_init(void)
 {
 	static bool socinfo_init_done;
@@ -1328,9 +1340,6 @@ int __init socinfo_init(void)
 	socinfo_print();
 	arch_read_hardware_id = msm_read_hardware_id;
 	socinfo_init_done = true;
-
-	if (cur_cpu == MSM_CPU_8994)
-		check_msm8994_version();
 
 	return 0;
 }

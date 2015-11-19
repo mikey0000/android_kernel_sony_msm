@@ -20,7 +20,7 @@
 #include "msm_cci.h"
 
 #undef CDBG
-#define CDBG(fmt, args...) pr_err(fmt, ##args)
+#define CDBG(fmt, args...) pr_debug(fmt, ##args)
 
 DEFINE_MSM_MUTEX(msm_flash_mutex);
 
@@ -155,6 +155,22 @@ static int32_t msm_flash_i2c_write_table(
 		&flash_ctrl->flash_i2c_client, &conf_array);
 }
 
+#ifdef CONFIG_COMPAT
+static void msm_flash_copy_power_settings_compat(
+	struct msm_sensor_power_setting *ps,
+	struct msm_sensor_power_setting32 *ps32, uint32_t size)
+{
+	uint16_t i = 0;
+
+	for (i = 0; i < size; i++) {
+		ps[i].config_val = ps32[i].config_val;
+		ps[i].delay = ps32[i].delay;
+		ps[i].seq_type = ps32[i].seq_type;
+		ps[i].seq_val = ps32[i].seq_val;
+	}
+}
+#endif
+
 static int32_t msm_flash_i2c_init(
 	struct msm_flash_ctrl_t *flash_ctrl,
 	struct msm_flash_cfg_data_t *flash_data)
@@ -163,6 +179,7 @@ static int32_t msm_flash_i2c_init(
 	struct msm_flash_init_info_t *flash_init_info =
 		flash_data->cfg.flash_init_info;
 	struct msm_camera_i2c_reg_setting_array *settings = NULL;
+	struct msm_camera_cci_client *cci_client = NULL;
 #ifdef CONFIG_COMPAT
 	struct msm_sensor_power_setting_array32 *power_setting_array32 = NULL;
 #endif
@@ -187,6 +204,7 @@ static int32_t msm_flash_i2c_init(
 			sizeof(struct msm_sensor_power_setting_array32))) {
 			pr_err("%s copy_from_user failed %d\n",
 				__func__, __LINE__);
+			kfree(power_setting_array32);
 			return -EFAULT;
 		}
 
@@ -198,19 +216,46 @@ static int32_t msm_flash_i2c_init(
 			compat_ptr(power_setting_array32->power_down_setting);
 		flash_ctrl->power_setting_array.power_setting =
 			compat_ptr(power_setting_array32->power_setting);
-		memcpy(&flash_ctrl->power_setting_array.power_down_setting_a,
-			&power_setting_array32->power_down_setting_a,
-			sizeof(power_setting_array32->power_down_setting_a));
-		memcpy(&flash_ctrl->power_setting_array.power_setting_a,
-			&power_setting_array32->power_setting_a,
-			sizeof(power_setting_array32->power_setting_a));
-	}
+
+		/* Validate power_up array size and power_down array size */
+		if ((!flash_ctrl->power_setting_array.size) ||
+			(flash_ctrl->power_setting_array.size >
+			MAX_POWER_CONFIG) ||
+			(!flash_ctrl->power_setting_array.size_down) ||
+			(flash_ctrl->power_setting_array.size_down >
+			MAX_POWER_CONFIG)) {
+
+			pr_err("failed: invalid size %d, size_down %d",
+				flash_ctrl->power_setting_array.size,
+				flash_ctrl->power_setting_array.size_down);
+			kfree(power_setting_array32);
+			power_setting_array32 = NULL;
+			return -EINVAL;
+		}
+		/* Copy the settings from compat struct to regular struct */
+		msm_flash_copy_power_settings_compat(
+			flash_ctrl->power_setting_array.power_setting_a,
+			power_setting_array32->power_setting_a,
+			flash_ctrl->power_setting_array.size);
+
+		msm_flash_copy_power_settings_compat(
+			flash_ctrl->power_setting_array.power_down_setting_a,
+			power_setting_array32->power_down_setting_a,
+			flash_ctrl->power_setting_array.size_down);
+	} else
 #endif
 	if (copy_from_user(&flash_ctrl->power_setting_array,
 		(void *)flash_init_info->power_setting_array,
 		sizeof(struct msm_sensor_power_setting_array))) {
 		pr_err("%s copy_from_user failed %d\n", __func__, __LINE__);
 		return -EFAULT;
+	}
+
+	if (flash_ctrl->flash_device_type == MSM_CAMERA_PLATFORM_DEVICE) {
+		cci_client = flash_ctrl->flash_i2c_client.cci_client;
+		cci_client->sid = flash_init_info->slave_addr >> 1;
+		cci_client->retries = 3;
+		cci_client->id_map = 0;
 	}
 
 	flash_ctrl->power_info.power_setting =
@@ -950,6 +995,8 @@ static long msm_flash_subdev_do_ioctl(
 			}
 			flash_init_info.flash_driver_type =
 				flash_init_info32.flash_driver_type;
+			flash_init_info.slave_addr =
+				flash_init_info32.slave_addr;
 			flash_init_info.settings =
 				compat_ptr(flash_init_info32.settings);
 			flash_init_info.power_setting_array =
@@ -1005,6 +1052,7 @@ static int32_t msm_flash_platform_probe(struct platform_device *pdev)
 	if (rc < 0) {
 		pr_err("%s:%d msm_flash_get_dt_data failed\n",
 			__func__, __LINE__);
+		kfree(flash_ctrl);
 		return -EINVAL;
 	}
 
@@ -1050,7 +1098,7 @@ static int32_t msm_flash_platform_probe(struct platform_device *pdev)
 	flash_ctrl->msm_sd.sd.devnode->fops = &msm_flash_v4l2_subdev_fops;
 
 	if (flash_ctrl->flash_driver_type == FLASH_DRIVER_PMIC)
-		rc = msm_torch_create_classdev(pdev, &flash_ctrl);
+		rc = msm_torch_create_classdev(pdev, flash_ctrl);
 
 	CDBG("probe success\n");
 	return rc;
