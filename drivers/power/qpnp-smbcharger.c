@@ -161,6 +161,9 @@ struct smbchg_chip {
 	bool				dc_present;
 	bool				usb_present;
 	bool				batt_present;
+#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
+	bool				otg_present;
+#endif
 	int				otg_retries;
 	ktime_t				otg_enable_time;
 	bool				aicl_deglitch_short;
@@ -173,9 +176,6 @@ struct smbchg_chip {
 	bool				parallel_charger_detected;
 	const char			*battery_type;
 	u32				wa_flags;
-#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
-	bool				otg_present;
-#endif
 
 	/* jeita and temperature */
 	bool				batt_hot;
@@ -241,10 +241,9 @@ struct smbchg_chip {
 	int				aicl_irq_count;
 	struct mutex			usb_status_lock;
 #ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
-	spinlock_t                      otg_present_lock;
-	struct chg_somc_params          somc_params;
+	spinlock_t			otg_present_lock;
+	struct chg_somc_params		somc_params;
 #endif
-
 };
 
 enum qpnp_schg {
@@ -775,6 +774,7 @@ static int get_prop_batt_status(struct smbchg_chip *chip)
 #ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
 	union power_supply_propval prop = {0, };
 #endif
+
 #ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
 	rc = chip->usb_psy->get_property(chip->usb_psy,
 				POWER_SUPPLY_PROP_ONLINE, &prop);
@@ -801,19 +801,12 @@ static int get_prop_batt_status(struct smbchg_chip *chip)
 		return POWER_SUPPLY_STATUS_UNKNOWN;
 	}
 
-#ifndef CONFIG_QPNP_SMBCHARGER_EXTENSION
 	if (reg & BAT_TCC_REACHED_BIT)
 		return POWER_SUPPLY_STATUS_FULL;
-#endif
 
 	chg_inhibit = reg & CHG_INHIBIT_BIT;
 	if (chg_inhibit)
 		return POWER_SUPPLY_STATUS_FULL;
-
-#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
-	if (reg & BAT_TCC_REACHED_BIT)
-		return POWER_SUPPLY_STATUS_FULL;
-#endif
 
 	rc = smbchg_read(chip, &reg, chip->chgr_base + CHGR_STS, 1);
 	if (rc < 0) {
@@ -1252,16 +1245,16 @@ enum enable_reason {
 	 * charger does not accidentally try to charge from the external supply.
 	 */
 	REASON_OTG = BIT(5),
-#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
-	/*
-	 * a LLK mode charging is being used, limit charging to battery.
-	 */
-	REASON_LLK = BIT(6),
-#endif
 	/*
 	 * the charger is very weak, do not draw any current from it
 	 */
 	REASON_WEAK_CHARGER = BIT(6),
+#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
+	/*
+	 * a LLK mode charging is being used, limit charging to battery.
+	 */
+	REASON_LLK = BIT(7),
+#endif
 };
 
 enum battchg_enable_reason {
@@ -1671,19 +1664,12 @@ static int smbchg_set_usb_current_max(struct smbchg_chip *chip,
 			pr_err("Couldn't set %dmA rc = %d\n", current_ma, rc);
 		break;
 	}
-
-out:
 #endif
+out:
 	pr_smb(PR_STATUS, "usb type = %s current set to %d mA\n",
 			usb_type_name, chip->usb_max_current_ma);
 	return rc;
 }
-
-#define USBIN_HVDCP_STS				0x0C
-#define USBIN_HVDCP_SEL_BIT			BIT(4)
-#define USBIN_HVDCP_SEL_9V_BIT			BIT(1)
-#define SCHG_LITE_USBIN_HVDCP_SEL_9V_BIT	BIT(2)
-#define SCHG_LITE_USBIN_HVDCP_SEL_BIT		BIT(0)
 
 #ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
 int somc_chg_set_usb_current_max(struct device *dev, int current_ma)
@@ -1693,6 +1679,11 @@ int somc_chg_set_usb_current_max(struct device *dev, int current_ma)
 }
 #endif
 
+#define USBIN_HVDCP_STS				0x0C
+#define USBIN_HVDCP_SEL_BIT			BIT(4)
+#define USBIN_HVDCP_SEL_9V_BIT			BIT(1)
+#define SCHG_LITE_USBIN_HVDCP_SEL_9V_BIT	BIT(2)
+#define SCHG_LITE_USBIN_HVDCP_SEL_BIT		BIT(0)
 static int smbchg_get_min_parallel_current_ma(struct smbchg_chip *chip)
 {
 	int rc;
@@ -2592,10 +2583,9 @@ static int smbchg_set_thermal_limited_usb_current_max(struct smbchg_chip *chip,
 
 	pr_smb(PR_STATUS, "AICL = %d, ICL = %d\n",
 			aicl_ma, chip->usb_max_current_ma);
+#ifndef CONFIG_QPNP_SMBCHARGER_EXTENSION
 	if (chip->usb_max_current_ma > aicl_ma && smbchg_is_aicl_complete(chip))
 		smbchg_rerun_aicl(chip);
-#ifndef CONFIG_QPNP_SMBCHARGER_EXTENSION
-	smbchg_rerun_aicl(chip);
 #endif
 	smbchg_parallel_usb_check_ok(chip);
 	return rc;
@@ -3094,12 +3084,14 @@ static int smbchg_hw_aicl_rerun_en(struct smbchg_chip *chip, bool en)
 {
 	int rc = 0;
 
+#ifndef CONFIG_QPNP_SMBCHARGER_EXTENSION
 	rc = smbchg_sec_masked_write(chip,
 		chip->misc_base + MISC_TRIM_OPT_15_8,
 		AICL_RERUN_MASK, en ? AICL_RERUN_ON : AICL_RERUN_OFF);
 	if (rc)
 		pr_err("Couldn't write to MISC_TRIM_OPTIONS_15_8 rc=%d\n",
 			rc);
+#endif
 	return rc;
 }
 
@@ -3149,7 +3141,7 @@ static void smbchg_aicl_deglitch_wa_en(struct smbchg_chip *chip, bool en)
 		if (rc) {
 			pr_err("Couldn't write to DC_AICL_CFG rc=%d\n", rc);
 			return;
-			}
+		}
 		if (!chip->very_weak_charger) {
 			rc = smbchg_hw_aicl_rerun_en(chip, true);
 			if (rc) {
@@ -3174,14 +3166,12 @@ static void smbchg_aicl_deglitch_wa_en(struct smbchg_chip *chip, bool en)
 			pr_err("Couldn't write to DC_AICL_CFG rc=%d\n", rc);
 			return;
 		}
-#ifndef CONFIG_QPNP_SMBCHARGER_EXTENSION
 		rc = smbchg_hw_aicl_rerun_en(chip, false);
 		if (rc) {
 			pr_err("Couldn't disable AICL rerun rc= %d\n", rc);
 			return;
 		}
 		pr_smb(PR_STATUS, "AICL deglitch set to normal\n");
-#endif
 	}
 	chip->aicl_deglitch_short = en;
 }
@@ -3394,13 +3384,12 @@ static void smbchg_external_power_changed(struct power_supply *psy)
 			chip->previous_soc = soc;
 			smbchg_soc_changed(chip);
 		}
-
+#endif
 		rc = smbchg_config_chg_battery_type(chip);
 		if (rc)
 			pr_smb(PR_MISC,
 				"Couldn't update charger configuration rc=%d\n",
 									rc);
-#endif
 	}
 
 	rc = chip->usb_psy->get_property(chip->usb_psy,
@@ -3431,15 +3420,14 @@ static void smbchg_external_power_changed(struct power_supply *psy)
 				current_limit);
 #ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
 		last_current_limit = chip->usb_target_current_ma;
-#endif
 		chip->usb_target_current_ma = current_limit;
-#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
 		current_ma = (last_current_limit > SUSPEND_CURRENT_MA &&
 			current_limit > SUSPEND_CURRENT_MA) ?
 			CURRENT_RESET_MA : SUSPEND_CURRENT_MA;
 		rc = smbchg_set_thermal_limited_usb_current_max(chip,
 				current_ma);
 #else
+		chip->usb_target_current_ma = current_limit;
 		rc = smbchg_set_thermal_limited_usb_current_max(chip,
 				current_limit);
 #endif
@@ -4017,6 +4005,14 @@ static void smbchg_hvdcp_det_work(struct work_struct *work)
 	}
 }
 
+#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
+#define ADPT_ALLOWANCE_MASK		SMB_MASK(2, 0)
+#define USBIN_ADPT_ALLOW_5V		0x0
+#define USBIN_ADPT_ALLOW_5V_TO_9V	0x2
+#endif
+#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
+#define REMOVE_DELAY_MS			2000
+#endif
 static void handle_usb_removal(struct smbchg_chip *chip)
 {
 	struct power_supply *parallel_psy = get_parallel_psy(chip);
@@ -4060,10 +4056,6 @@ static void handle_usb_removal(struct smbchg_chip *chip)
 	}
 	chip->parallel.enabled_once = false;
 	chip->vbat_above_headroom = false;
-	rc = smbchg_masked_write(chip, chip->usb_chgpth_base + CMD_IL,
-			ICL_OVERRIDE_BIT, 0);
-	if (rc < 0)
-		pr_err("Couldn't set override rc = %d\n", rc);
 #ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
 	somc_chg_invalid_set_state(&chip->somc_params, 0);
 	if (!is_dc_present(chip) && !is_usb_present(chip))
@@ -4077,6 +4069,10 @@ static void handle_usb_removal(struct smbchg_chip *chip)
 	if (rc)
 		dev_err(chip->dev, "Can't set 5/9v unreg rc=%d\n", rc);
 #endif
+	rc = smbchg_masked_write(chip, chip->usb_chgpth_base + CMD_IL,
+			ICL_OVERRIDE_BIT, 0);
+	if (rc < 0)
+		pr_err("Couldn't set override rc = %d\n", rc);
 }
 
 static bool is_src_detect_high(struct smbchg_chip *chip)
@@ -4307,6 +4303,7 @@ static void increment_aicl_count(struct smbchg_chip *chip)
 			pr_smb(PR_INTERRUPT, "elp:%ld first:%ld now:%ld c=%d\n",
 				elapsed_seconds, chip->first_aicl_seconds,
 				now_seconds, chip->aicl_irq_count);
+#ifndef CONFIG_QPNP_SMBCHARGER_EXTENSION
 			pr_smb(PR_INTERRUPT, "Disable AICL rerun\n");
 			/*
 			 * Disable AICL rerun since many interrupts were
@@ -4316,6 +4313,7 @@ static void increment_aicl_count(struct smbchg_chip *chip)
 			rc = smbchg_hw_aicl_rerun_en(chip, false);
 			if (rc)
 				pr_err("could not enable aicl reruns: %d", rc);
+#endif
 			bad_charger = true;
 			chip->aicl_irq_count = 0;
 		} else if ((get_prop_charge_type(chip) ==
@@ -4358,10 +4356,6 @@ static enum power_supply_property smbchg_battery_properties[] = {
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_TEMP,
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
-	POWER_SUPPLY_PROP_SAFETY_TIMER_ENABLE,
-	POWER_SUPPLY_PROP_INPUT_CURRENT_MAX,
-	POWER_SUPPLY_PROP_INPUT_CURRENT_SETTLED,
-	POWER_SUPPLY_PROP_FLASH_ACTIVE,
 #ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
 	POWER_SUPPLY_PROP_INVALID_CHARGER,
 	POWER_SUPPLY_PROP_ENABLE_SHUTDOWN_AT_LOW_BATTERY,
@@ -4372,6 +4366,10 @@ static enum power_supply_property smbchg_battery_properties[] = {
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
 	POWER_SUPPLY_PROP_CYCLE_COUNT,
 #endif
+	POWER_SUPPLY_PROP_SAFETY_TIMER_ENABLE,
+	POWER_SUPPLY_PROP_INPUT_CURRENT_MAX,
+	POWER_SUPPLY_PROP_INPUT_CURRENT_SETTLED,
+	POWER_SUPPLY_PROP_FLASH_ACTIVE,
 };
 
 static int smbchg_battery_set_property(struct power_supply *psy,
@@ -4546,6 +4544,33 @@ static int smbchg_battery_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_FLASH_ACTIVE:
 		val->intval = chip->otg_pulse_skip_dis;
 		break;
+#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
+	case POWER_SUPPLY_PROP_INVALID_CHARGER:
+		val->intval = somc_chg_invalid_get_state(&chip->somc_params);
+		break;
+	case POWER_SUPPLY_PROP_ENABLE_SHUTDOWN_AT_LOW_BATTERY:
+		val->intval =
+			chip->somc_params.enable_shutdown_at_low_battery;
+		break;
+	case POWER_SUPPLY_PROP_ENABLE_LLK:
+		val->intval = chip->somc_params.limit_charge.enable_llk;
+		break;
+	case POWER_SUPPLY_PROP_LLK_SOCMAX:
+		val->intval = chip->somc_params.limit_charge.llk_socmax;
+		break;
+	case POWER_SUPPLY_PROP_LLK_SOCMIN:
+		val->intval = chip->somc_params.limit_charge.llk_socmin;
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_FULL:
+		val->intval = get_prop_batt_charge_full(chip);
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
+		val->intval = get_prop_batt_charge_full_design(chip);
+		break;
+	case POWER_SUPPLY_PROP_CYCLE_COUNT:
+		val->intval = get_prop_batt_cycle_count(chip);
+		break;
+#endif
 	default:
 		return -EINVAL;
 	}
@@ -4655,9 +4680,6 @@ static irqreturn_t batt_hot_handler(int irq, void *_chip)
 	smbchg_wipower_check(chip);
 	set_property_on_fg(chip, POWER_SUPPLY_PROP_HEALTH,
 			get_prop_batt_health(chip));
-#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
-	somc_chg_temp_status_transition(reg);
-#endif
 	return IRQ_HANDLED;
 }
 
@@ -4676,9 +4698,6 @@ static irqreturn_t batt_cold_handler(int irq, void *_chip)
 	smbchg_wipower_check(chip);
 	set_property_on_fg(chip, POWER_SUPPLY_PROP_HEALTH,
 			get_prop_batt_health(chip));
-#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
-	somc_chg_temp_status_transition(reg);
-#endif
 	return IRQ_HANDLED;
 }
 
@@ -4822,6 +4841,12 @@ static irqreturn_t taper_handler(int irq, void *_chip)
 		power_supply_changed(&chip->batt_psy);
 	smbchg_charging_status_change(chip);
 	smbchg_wipower_check(chip);
+#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
+	somc_chg_temp_status_transition(reg);
+#endif
+#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
+	somc_chg_temp_status_transition(reg);
+#endif
 	return IRQ_HANDLED;
 }
 
@@ -4873,9 +4898,6 @@ static irqreturn_t power_ok_handler(int irq, void *_chip)
  * @rt_stat: the status bit indicating whether dc voltage is uv
  */
 #define DCIN_UNSUSPEND_DELAY_MS		1000
-#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
-#define REMOVE_DELAY_MS			2000
-#endif
 static irqreturn_t dcin_uv_handler(int irq, void *_chip)
 {
 	struct smbchg_chip *chip = _chip;
@@ -4978,12 +5000,16 @@ out:
 static irqreturn_t usbin_uv_handler(int irq, void *_chip)
 {
 	struct smbchg_chip *chip = _chip;
+#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
+	bool usb_present = is_usb_present(chip);
+	union power_supply_propval prop = {0, };
+#else
 	int aicl_level = smbchg_get_aicl_level_ma(chip);
-#ifndef CONFIG_QPNP_SMBCHARGER_EXTENSION
 	int rc;
 	bool unused;
 	u8 reg;
 #endif
+
 
 #ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
 	if (usb_present)
@@ -5081,6 +5107,9 @@ static irqreturn_t src_detect_handler(int irq, void *_chip)
 	bool usb_present = is_usb_present(chip), unused;
 	bool src_detect = is_src_detect_high(chip);
 	int rc;
+#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
+	union power_supply_propval prop = {0, };
+#endif
 
 	pr_smb(PR_STATUS,
 		"chip->usb_present = %d usb_present = %d src_detect = %d",
@@ -5103,9 +5132,24 @@ static irqreturn_t src_detect_handler(int irq, void *_chip)
 	if (src_detect) {
 		update_usb_status(chip, usb_present, 0);
 	} else {
+#ifndef CONFIG_QPNP_SMBCHARGER_EXTENSION
 		update_usb_status(chip, 0, false);
 		chip->aicl_irq_count = 0;
+#else
+		usb_present = false;
+#endif
 	}
+
+#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
+	if (!usb_present) {
+		chip->usb_present = usb_present;
+		handle_usb_removal(chip);
+		somc_chg_usbin_notify_changed(&chip->somc_params, usb_present);
+		prop.intval = usb_present;
+		chip->usb_psy->set_property(chip->usb_psy,
+					POWER_SUPPLY_PROP_USBIN_DET, &prop);
+	}
+#endif
 
 	return IRQ_HANDLED;
 }
@@ -5207,7 +5251,15 @@ static irqreturn_t usbid_change_handler(int irq, void *_chip)
 	bool otg_present_old;
 	unsigned long flags;
 #endif
+
 	pr_smb(PR_INTERRUPT, "triggered\n");
+
+#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
+	if (!somc_chg_usbid_is_change_irq_enabled(&chip->somc_params)) {
+		pr_smb(PR_INTERRUPT, "but ignore\n");
+		return IRQ_HANDLED;
+	}
+#endif
 
 	otg_present = is_otg_present(chip);
 #ifndef CONFIG_QPNP_SMBCHARGER_EXTENSION
@@ -5393,7 +5445,6 @@ static inline int get_bpd(const char *name)
 #define HVDCP_AUTH_ALG_EN_BIT		BIT(6)
 #define CMD_APSD			0x41
 #define APSD_RERUN_BIT			BIT(0)
-
 #ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
 #define VFLOAT_CMP_CFG_REG		0xF5
 #define VFLOAT_CMP_MASK			SMB_MASK(5, 0)
@@ -5408,7 +5459,6 @@ static inline int get_bpd(const char *name)
 #define PCC_550MA_VAL	0x04
 #define PCC_MASK		SMB_MASK(2, 0)
 #endif
-
 static int smbchg_hw_init(struct smbchg_chip *chip)
 {
 	int rc, i;
@@ -5808,47 +5858,6 @@ static int smbchg_hw_init(struct smbchg_chip *chip)
 
 	if (chip->force_aicl_rerun)
 		rc = smbchg_aicl_config(chip);
-
-#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
-	rc = smbchg_sec_masked_write(chip,
-			chip->chgr_base + VFLOAT_CMP_CFG_REG,
-			VFLOAT_CMP_MASK, VFLOAT_CMP_SUB_8_VAL);
-	if (rc < 0) {
-		dev_err(chip->dev,
-			"Couldn't set vfloat compensation rc=%d\n", rc);
-		return rc;
-	}
-
-	/* Enable vfloat compensation at warm status */
-	rc = smbchg_sec_masked_write(chip,
-		chip->chgr_base + VFLOAT_CCMP_CFG_REG,
-		VFLOAT_CCMP_SL_FV_COMP_MASK,
-		VFLOAT_CCMP_HOT_SL_FV_COMP);
-	if (rc < 0) {
-		dev_err(chip->dev,
-			"Couldn't set temp vfloat comp. rc=%d\n", rc);
-		return rc;
-	}
-
-	rc = smbchg_sec_masked_write(chip,
-			chip->misc_base + MISC_TRIM_OPT_15_8,
-			AICL_INIT_MASK | AICL_ADC_MASK | AICL_RERUN_MASK,
-			AICL_ADC_ON | AICL_RERUN_ON);
-	if (rc < 0) {
-		dev_err(chip->dev, "Couldn't set AICL setting rc=%d\n", rc);
-		return rc;
-	}
-
-	/* Pre-Charge 550mA */
-	rc = smbchg_sec_masked_write(chip,
-		chip->chgr_base + PCC_CFG,
-		PCC_MASK, PCC_550MA_VAL);
-	if (rc < 0) {
-		dev_err(chip->dev,
-			"Couldn't set pre charge 550mA. rc=%d\n", rc);
-		return rc;
-	}
-#endif
 
 	return rc;
 }
@@ -6352,6 +6361,47 @@ static int smbchg_request_irqs(struct smbchg_chip *chip)
 		}
 	}
 
+#ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
+	rc = smbchg_sec_masked_write(chip,
+			chip->chgr_base + VFLOAT_CMP_CFG_REG,
+			VFLOAT_CMP_MASK, VFLOAT_CMP_SUB_8_VAL);
+	if (rc < 0) {
+		dev_err(chip->dev,
+			"Couldn't set vfloat compensation rc=%d\n", rc);
+		return rc;
+	}
+
+	/* Enable vfloat compensation at warm status */
+	rc = smbchg_sec_masked_write(chip,
+		chip->chgr_base + VFLOAT_CCMP_CFG_REG,
+		VFLOAT_CCMP_SL_FV_COMP_MASK,
+		VFLOAT_CCMP_HOT_SL_FV_COMP);
+	if (rc < 0) {
+		dev_err(chip->dev,
+			"Couldn't set temp vfloat comp. rc=%d\n", rc);
+		return rc;
+	}
+
+	rc = smbchg_sec_masked_write(chip,
+			chip->misc_base + MISC_TRIM_OPT_15_8,
+			AICL_INIT_MASK | AICL_ADC_MASK | AICL_RERUN_MASK,
+			AICL_ADC_ON | AICL_RERUN_ON);
+	if (rc < 0) {
+		dev_err(chip->dev, "Couldn't set AICL setting rc=%d\n", rc);
+		return rc;
+	}
+
+	/* Pre-Charge 550mA */
+	rc = smbchg_sec_masked_write(chip,
+		chip->chgr_base + PCC_CFG,
+		PCC_MASK, PCC_550MA_VAL);
+	if (rc < 0) {
+		dev_err(chip->dev,
+			"Couldn't set pre charge 550mA. rc=%d\n", rc);
+		return rc;
+	}
+#endif
+
 	return rc;
 }
 
@@ -6624,11 +6674,11 @@ static int smbchg_probe(struct spmi_device *spmi)
 	mutex_init(&chip->pm_lock);
 	mutex_init(&chip->wipower_config);
 	mutex_init(&chip->usb_status_lock);
-	device_init_wakeup(chip->dev, true);
 #ifdef CONFIG_QPNP_SMBCHARGER_EXTENSION
 	spin_lock_init(&chip->otg_present_lock);
 	somc_chg_init(&chip->somc_params);
 #endif
+	device_init_wakeup(chip->dev, true);
 
 	rc = smbchg_parse_peripherals(chip);
 	if (rc) {

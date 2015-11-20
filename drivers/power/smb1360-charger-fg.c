@@ -2208,7 +2208,6 @@ static int usbin_uv_handler(struct smb1360_chip *chip, u8 rt_stat)
 	}
 
 	return 0;
-#endif
 }
 
 static int aicl_done_handler(struct smb1360_chip *chip, u8 rt_stat)
@@ -2224,6 +2223,7 @@ static int aicl_done_handler(struct smb1360_chip *chip, u8 rt_stat)
 	}
 
 	return 0;
+#endif
 }
 
 static int chg_inhibit_handler(struct smb1360_chip *chip, u8 rt_stat)

@@ -449,6 +449,13 @@ struct fg_chip {
 	struct fg_learning_data	learning_data;
 	struct alarm		fg_cap_learning_alarm;
 	struct work_struct	fg_cap_learning_work;
+#ifdef CONFIG_QPNP_FG_EXTENSION
+	struct fg_somc_params	somc_params;
+	u32		battery_soc;
+	u32		cc_soc;
+	u32		soc_system;
+	u32		soc_monotonic;
+#endif
 	/* rslow compensation */
 	struct fg_rslow_data	rslow_comp;
 	/* cycle counter */
@@ -460,13 +467,6 @@ struct fg_chip {
 	bool			batt_cold;
 	int			cold_hysteresis;
 	int			hot_hysteresis;
-#ifdef CONFIG_QPNP_FG_EXTENSION
-	struct fg_somc_params	somc_params;
-	u32		battery_soc;
-	u32		cc_soc;
-	u32		soc_system;
-	u32		soc_monotonic;
-#endif
 };
 
 /* FG_MEMIF DEBUGFS structures */
@@ -1262,14 +1262,8 @@ static int get_monotonic_soc_raw(struct fg_chip *chip)
 		return -EINVAL;
 	}
 
-#ifdef CONFIG_QPNP_FG_EXTENSION
-	if (cap[0] > 0)
-		cap[0] = somc_fg_ceil_capacity(cap[0]);
-
-#else
 	if (fg_debug_mask & FG_POWER_SUPPLY)
 		pr_info_ratelimited("raw: 0x%02x\n", cap[0]);
-#endif
 	return cap[0];
 }
 
@@ -1299,8 +1293,13 @@ static int get_prop_capacity(struct fg_chip *chip)
 		return EMPTY_CAPACITY;
 	else if (msoc == FULL_SOC_RAW)
 		return FULL_CAPACITY;
+
+#ifdef CONFIG_QPNP_FG_EXTENSION
+	return somc_fg_ceil_capacity(msoc);
+#else
 	return DIV_ROUND_CLOSEST((msoc - 1) * (FULL_CAPACITY - 2),
 			FULL_SOC_RAW - 2) + 1;
+#endif
 }
 
 #define HIGH_BIAS	3
@@ -1531,23 +1530,22 @@ static int64_t twos_compliment_extend(int64_t val, int nbytes)
 #define SRAM_PERIOD_NO_ID_UPDATE_MS	100
 #define FULL_PERCENT_28BIT		0xFFFFFFF
 #ifdef CONFIG_QPNP_FG_EXTENSION
-#define CC_SOC_REG                      0x570
-#define CC_SOC_OFFSET           0
-#define SOC_SYSTEM_REG          0x574
-#define SOC_SYSTEM_OFFSET       0
-#define SOC_MONOTONIC_REG       0x574
-#define SOC_MONOTONIC_OFFSET    2
+#define CC_SOC_REG		0x570
+#define CC_SOC_OFFSET		0
+#define SOC_SYSTEM_REG		0x574
+#define SOC_SYSTEM_OFFSET	0
+#define SOC_MONOTONIC_REG	0x574
+#define SOC_MONOTONIC_OFFSET	2
 #endif
-
 static void update_sram_data(struct fg_chip *chip, int *resched_ms)
 {
 	int i, j, rc = 0;
 	u8 reg[4];
+	int64_t temp;
+	int battid_valid = fg_is_batt_id_valid(chip);
 #ifdef CONFIG_QPNP_FG_EXTENSION
 	u32 read_soc;
 #endif
-	int64_t temp;
-	int battid_valid = fg_is_batt_id_valid(chip);
 
 	fg_stay_awake(&chip->update_sram_wakeup_source);
 	if (chip->fg_restarting)
@@ -2979,11 +2977,11 @@ static int fg_property_is_writeable(struct power_supply *psy,
 	switch (psp) {
 	case POWER_SUPPLY_PROP_COOL_TEMP:
 	case POWER_SUPPLY_PROP_WARM_TEMP:
-	case POWER_SUPPLY_PROP_CYCLE_COUNT_ID:
 #ifdef CONFIG_QPNP_FG_EXTENSION
 	case POWER_SUPPLY_PROP_COLD_TEMP:
 	case POWER_SUPPLY_PROP_HOT_TEMP:
 #endif
+	case POWER_SUPPLY_PROP_CYCLE_COUNT_ID:
 		return 1;
 	default:
 		break;
@@ -3363,7 +3361,7 @@ done:
 #define RSLOW_COMP_C1_OFFSET		0
 #define RSLOW_COMP_C2_OFFSET		2
 #ifdef CONFIG_QPNP_FG_EXTENSION
-#define LEARNED_CC_RANGE                13
+#define LEARNED_CC_RANGE		13
 #endif
 static int populate_system_data(struct fg_chip *chip)
 {
@@ -3666,10 +3664,9 @@ static int fg_do_restart(struct fg_chip *chip, bool write_profile)
 	}
 
 	/* unset the restart bits so the fg doesn't continuously restart */
-#ifdef CONFIG_QPNP_FG_EXTENSION
-	reg = REDO_BATID | REDO_FIRST_ESTIMATE | RESTART_GO;
-#else
 	reg = REDO_FIRST_ESTIMATE | RESTART_GO;
+#ifdef CONFIG_QPNP_FG_EXTENSION
+	reg |= REDO_BATID;
 #endif
 	rc = fg_masked_write(chip, chip->soc_base + SOC_RESTART,
 			reg, 0, 1);
@@ -5595,13 +5592,6 @@ static int fg_probe(struct spmi_device *spmi)
 		}
 	}
 
-	schedule_work(&chip->init_work);
-
-	pr_info("FG Probe success - FG Revision DIG:%d.%d ANA:%d.%d PMIC subtype=%d\n",
-		chip->revision[DIG_MAJOR], chip->revision[DIG_MINOR],
-		chip->revision[ANA_MAJOR], chip->revision[ANA_MINOR],
-		chip->pmic_subtype);
-
 #ifdef CONFIG_QPNP_FG_EXTENSION
 	chip->somc_params.fg_debug_mask = &fg_debug_mask;
 	chip->somc_params.soc_base = &chip->soc_base;
@@ -5617,6 +5607,14 @@ static int fg_probe(struct spmi_device *spmi)
 	if (rc < 0)
 		pr_err("somc fg register failed rc = %d\n", rc);
 #endif
+
+	schedule_work(&chip->init_work);
+
+	pr_info("FG Probe success - FG Revision DIG:%d.%d ANA:%d.%d PMIC subtype=%d\n",
+		chip->revision[DIG_MAJOR], chip->revision[DIG_MINOR],
+		chip->revision[ANA_MAJOR], chip->revision[ANA_MINOR],
+		chip->pmic_subtype);
+
 	return rc;
 
 power_supply_unregister:
