@@ -3002,7 +3002,6 @@ static void msm_chg_detect_work(struct work_struct *w)
 	}
 
 	queue_delayed_work(motg->otg_wq, &motg->chg_work, delay);
-
 #ifdef CONFIG_MACH_SONY_TULIP
 	external_chg_type = motg->chg_type;
 #endif
